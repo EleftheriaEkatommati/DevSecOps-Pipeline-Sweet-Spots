@@ -1,0 +1,34 @@
+Security vulnerabilities found in the project
+========================================
+
+1. Hardcoded passwords / API tokens
+- The project contains hardcoded credentials and secrets in configuration and deployment files.
+- Examples include database passwords in docker-compose and config templates, as well as exposed API keys in plaintext files.
+
+2. SQL injection vulnerabilities
+- There are vulnerable PHP pages that build SQL queries directly from user input without proper sanitization or parameterized queries.
+- These are typical examples of SQL injection test cases in the DVWA application.
+
+3. Command injection vulnerabilities
+- Some pages execute shell commands using user-controlled input.
+- This can allow attackers to inject additional operating system commands.
+
+4. Use of outdated or vulnerable dependencies
+- The Docker setup uses a general PHP base image and does not show strong dependency pinning or hardening.
+- This can increase exposure to known vulnerabilities in underlying packages.
+
+5. Insecure file handling / user input handling
+- Some modules allow unsafe file inclusion, upload handling, or direct use of user-controlled input.
+- This can lead to local file inclusion, arbitrary file upload, or other exploitation paths.
+
+6. Exposed credentials in configuration files
+- Credentials and secrets are present in plaintext in project files such as config templates, docker-compose files, and secret text files.
+- This creates a serious risk of accidental exposure.
+
+7. Vulnerable Docker image / Dockerfile configuration
+- The Dockerfile and compose configuration use default or weak credentials and do not apply strong container hardening.
+- This increases the attack surface of the deployment.
+
+Overall assessment
+------------------
+The repository contains multiple security weaknesses, especially in the DVWA demo application. These issues are relevant for learning and testing, but they should be treated as real security risks if the project is deployed or used outside a controlled environment.
