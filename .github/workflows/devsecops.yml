@@ -2,7 +2,9 @@ name: DevSecOps Security Pipeline
 
 on:
   push:
+    branches: [ master, main ]
   pull_request:
+    branches: [ master, main ]
 
 jobs:
   gitleaks-scan:
@@ -10,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -21,12 +23,10 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
 
       - name: Run Gitleaks Scan & Save Report
-        continue-on-error: true
         run: |
-          gitleaks detect --source=. --report-format=json --report-path=gitleaks-results.json --verbose
+          gitleaks detect --source=. --report-format=json --report-path=gitleaks-results.json --verbose || true
 
       - name: Upload Gitleaks Results
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-security-report
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -51,12 +51,10 @@ jobs:
           pip install semgrep
 
       - name: Run Semgrep Scan
-        continue-on-error: true
         run: |
-          semgrep scan --config=auto --sarif --output=semgrep.sarif
+          semgrep scan --config=auto --sarif --output=semgrep.sarif || true
 
       - name: Upload Semgrep SARIF Report
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-security-report
@@ -68,20 +66,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Run Trivy scanner
-        continue-on-error: true
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'json'
           output: 'trivy-results.json'
-          exit-code: '1'
+          exit-code: '0'
 
       - name: Upload Trivy Report
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trivy-security-report
