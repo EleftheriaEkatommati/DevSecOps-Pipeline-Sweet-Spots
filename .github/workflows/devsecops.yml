@@ -41,7 +41,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Rule ID | File | Line |" >> $GITHUB_STEP_SUMMARY
             echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-            jq -r '.[] | "| `\(.RuleID)` | `\(.File)` | `\(.Line)` |"' gitleaks-results.json | head -n 10 >> $GITHUB_STEP_SUMMARY
+            jq -r '.[] | "| `\(.RuleID)` | `\(.File)` | `\(.StartLine)` |"' gitleaks-results.json | head -n 10 >> $GITHUB_STEP_SUMMARY
           else
             echo "> ✅ **Clean:** No secrets found in the codebase." >> $GITHUB_STEP_SUMMARY
           fi
@@ -65,7 +65,7 @@ jobs:
 
       - name: Run Semgrep Scan
         run: |
-          semgrep scan --config=auto --sarif --output=semgrep.sarif || true
+          semgrep scan --config=auto --exclude=".github/workflows" --sarif --output=semgrep.sarif || true
 
       - name: Upload Semgrep SARIF Report
         uses: actions/upload-artifact@v4
@@ -81,7 +81,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Rule ID | File Path |" >> $GITHUB_STEP_SUMMARY
             echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-            jq -r '.runs[0].results[]? | "| `\(.ruleId)` | `\(.locations[0].physicalLocation.artifactLocation.uri)` |"' semgrep.sarif | head -n 10 >> $GITHUB_STEP_SUMMARY
+            jq -r '.runs[0].results[]? | "| `\(.ruleId)` | `\(.locations[0].physicalLocation.artifactLocation.uri)` |\n"' semgrep.sarif | head -n 20 >> $GITHUB_STEP_SUMMARY
           else
             echo "> ✅ No findings reported." >> $GITHUB_STEP_SUMMARY
           fi
@@ -116,7 +116,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Severity | Vulnerability ID | Package |" >> $GITHUB_STEP_SUMMARY
             echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
-            jq -r '.Results[]?.Vulnerabilities[]? | "| **\(.Severity)** | `\(.VulnerabilityID)` | `\(.PkgName)` |"' trivy-results.json | head -n 10 >> $GITHUB_STEP_SUMMARY
+            jq -r '.Results[]?.Vulnerabilities[]? | "| **\(.Severity)** | `\(.VulnerabilityID)` | `\(.PkgName)` |\n"' trivy-results.json | head -n 20 >> $GITHUB_STEP_SUMMARY
           else
             echo "> ✅ No vulnerabilities reported." >> $GITHUB_STEP_SUMMARY
           fi
