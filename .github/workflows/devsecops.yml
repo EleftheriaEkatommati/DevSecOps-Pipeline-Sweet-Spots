@@ -16,22 +16,62 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 1. Εγκατάσταση του Gitleaks απευθείας στο Ubuntu runner
       - name: Install Gitleaks
         run: |
           wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_x64.tar.gz
           tar -zxvf gitleaks_8.18.2_linux_x64.tar.gz
           sudo mv gitleaks /usr/local/bin/
 
-      # 2. Εκτέλεση σκανάρισματος και αποθήκευση σε JSON
       - name: Run Gitleaks Scan & Save Report
         run: |
           gitleaks detect --source=. --report-format=json --report-path=gitleaks-results.json --verbose || true
 
-      # 3. Αποθήκευση του αρχείου στα Artifacts του GitHub
-      - name: Upload Scan Results
+      - name: Upload Gitleaks Results
         uses: actions/upload-artifact@v4
         with:
           name: gitleaks-security-report
           path: gitleaks-results.json
+          retention-days: 7 
+
+  semgrep-sast:
+    name: Semgrep SAST Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: auto
+          generate-sarif: "1"
+
+      - name: Upload Semgrep SARIF Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-security-report
+          path: semgrep.sarif
+          retention-days: 7
+
+  trivy-scan:
+    name: Trivy Static & Config Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Trivy scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'json'
+          output: 'trivy-results.json'
+          exit-code: '0'
+
+      - name: Upload Trivy Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-security-report
+          path: trivy-results.json
           retention-days: 7
