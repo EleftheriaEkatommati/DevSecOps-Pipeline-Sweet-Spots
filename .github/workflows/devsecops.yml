@@ -33,13 +33,15 @@ jobs:
           path: gitleaks-results.json
           retention-days: 7 
 
-      - name: Add Gitleaks Job Summary
+      - name: Add Gitleaks Job Summary with Findings
         run: |
           echo "### 🔐 Gitleaks Secret Detection Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
-          echo "- Report File: \`gitleaks-results.json\`" >> $GITHUB_STEP_SUMMARY
           if [ -s gitleaks-results.json ] && [ "$(cat gitleaks-results.json)" != "[]" ]; then
-            echo "> ⚠️ **Warning:** Potential secrets or credentials were detected!" >> $GITHUB_STEP_SUMMARY
+            echo "> ⚠️ **Warning:** Secrets or credentials detected!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Rule ID | File | Line |" >> $GITHUB_STEP_SUMMARY
+            echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+            jq -r '.[] | "| `\(.RuleID)` | `\(.File)` | `\(.Line)` |"' gitleaks-results.json | head -n 10 >> $GITHUB_STEP_SUMMARY
           else
             echo "> ✅ **Clean:** No secrets found in the codebase." >> $GITHUB_STEP_SUMMARY
           fi
@@ -72,12 +74,17 @@ jobs:
           path: semgrep.sarif
           retention-days: 7
 
-      - name: Add Semgrep Job Summary
+      - name: Add Semgrep Job Summary with Findings
         run: |
           echo "### 🛡️ Semgrep SAST Scan Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
-          echo "- Report File: \`semgrep.sarif\`" >> $GITHUB_STEP_SUMMARY
-          echo "> ℹ️ Check the uploaded SARIF report artifact for detailed application vulnerability insights." >> $GITHUB_STEP_SUMMARY
+          if [ -s semgrep.sarif ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Rule ID | File Path |" >> $GITHUB_STEP_SUMMARY
+            echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+            jq -r '.runs[0].results[]? | "| `\(.ruleId)` | `\(.locations[0].physicalLocation.artifactLocation.uri)` |"' semgrep.sarif | head -n 10 >> $GITHUB_STEP_SUMMARY
+          else
+            echo "> ✅ No findings reported." >> $GITHUB_STEP_SUMMARY
+          fi
 
   trivy-scan:
     name: Trivy Static & Config Scan
@@ -102,9 +109,14 @@ jobs:
           path: trivy-results.json
           retention-days: 7
 
-      - name: Add Trivy Job Summary
+      - name: Add Trivy Job Summary with Findings
         run: |
           echo "### 🐳 Trivy Static & Config Scan Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
-          echo "- Report File: \`trivy-results.json\`" >> $GITHUB_STEP_SUMMARY
-          echo "> ℹ️ Check the uploaded JSON report artifact for dependency and configuration vulnerabilities." >> $GITHUB_STEP_SUMMARY
+          if [ -s trivy-results.json ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Vulnerability ID | Package |" >> $GITHUB_STEP_SUMMARY
+            echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+            jq -r '.Results[]?.Vulnerabilities[]? | "| **\(.Severity)** | `\(.VulnerabilityID)` | `\(.PkgName)` |"' trivy-results.json | head -n 10 >> $GITHUB_STEP_SUMMARY
+          else
+            echo "> ✅ No vulnerabilities reported." >> $GITHUB_STEP_SUMMARY
+          fi
