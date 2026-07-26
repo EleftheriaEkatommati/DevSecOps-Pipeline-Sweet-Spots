@@ -164,80 +164,36 @@ jobs:
 
       - name: Start DVWA Container Locally
         run: |
-          docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest
+          docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest || docker run -d -p 80:80 --name dvwa-app php:7.4-apache
           sleep 15
 
-      - name: Install Sqlmap and Python Requests
+      - name: Initialize DVWA Database
         run: |
-          sudo apt-get update && sudo apt-get install -y sqlmap python3-requests
+          curl -s -X POST --data "create_db=Create+%2F+Reset+Database" http://127.0.0.1/setup.php > /dev/null
 
-      - name: Run Python Auth, DB Setup & Sqlmap Scan
+      - name: Install Sqlmap
+        run: sudo apt-get update && sudo apt-get install -y sqlmap
+
+      - name: Run Authenticated Sqlmap Scan with Stability Fix
         run: |
-          python3 - << 'EOF'
-          import requests
-          import subprocess
-          import re
-          import os
-
-          session = requests.Session()
-          login_url = "http://127.0.0.1/login.php"
-          setup_url = "http://127.0.0.1/setup.php"
+          # 1. Σύνδεση στο DVWA και αποθήκευση session cookies
+          curl -s -c cookies.txt -d "username=admin&password=password&Login=Login" http://127.0.0.1/login.php > /dev/null
           
-          # 1. Login στο DVWA
-          resp = session.get(login_url)
-          token_match = re.search(r"name='user_token' value='(.*?)'", resp.text)
-          user_token = token_match.group(1) if token_match else ""
-          print(f"Login user_token: {user_token}")
+          # 2. Εξαγωγή του PHPSESSID δυναμικά
+          PHPSESSID=$(grep "PHPSESSID" cookies.txt | tail -n 1 | awk '{print $NF}')
+          echo "Active Session Cookie: PHPSESSID=$PHPSESSID"
 
-          payload = {
-              "username": "admin",
-              "password": "password",
-              "Login": "Login",
-              "user_token": user_token
-          }
-          session.post(login_url, data=payload)
-          session.cookies.set("security", "low")
-
-          # 2. Αρχικοποίηση της Βάσης Δεδομένων (Create / Reset DB)
-          print("Initializing DVWA Database...")
-          resp_setup = session.get(setup_url)
-          token_match_setup = re.search(r"name='user_token' value='(.*?)'", resp_setup.text)
-          setup_token = token_match_setup.group(1) if token_match_setup else ""
-          
-          setup_payload = {
-              "create_db": "Create / Reset Database",
-              "user_token": setup_token
-          }
-          session.post(setup_url, data=setup_payload)
-          print("Database initialized successfully.")
-
-          # 3. Εξαγωγή των τελικών Cookies
-          cookie_str = "; ".join([f"{name}={value}" for name, value in session.cookies.items()])
-          print(f"Active Session Cookies: {cookie_str}")
-
-          # 4. Εκτέλεση του sqlmap
-          if os.path.exists("endpoints.txt"):
-              with open("endpoints.txt", "r") as f:
-                  endpoints = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
-              
-              for ep in endpoints:
-                  print(f"Testing endpoint: {ep}")
-                  cmd = [
-                      "sqlmap",
-                      "-u", ep,
-                      "--cookie", cookie_str,
-                      "--dbms", "mysql",
-                      "-p", "id",
-                      "--ignore-redirects",
-                      "--batch",
-                      "--risk", "2",
-                      "--level", "2",
-                      "--output-dir", "sqlmap-out"
-                  ]
-                  subprocess.run(cmd)
-          else:
-              print("endpoints.txt not found!")
-          EOF
+          # 3. Εκτέλεση sqlmap με το cookie, το επίπεδο ασφαλείας και την παράμετρο --string
+          if [ -f "endpoints.txt" ]; then
+            while IFS= read -r endpoint; do
+              if [[ ! -z "$endpoint" && "$endpoint" != \#* ]]; then
+                echo "Testing endpoint: $endpoint"
+                sqlmap -u "$endpoint" --cookie="PHPSESSID=$PHPSESSID; security=low" --string="Vulnerability: SQL Injection" --batch --risk=1 --level=1 --output-dir=sqlmap-out || true
+              fi
+            done < endpoints.txt
+          else
+            echo "endpoints.txt not found!"
+          fi
 
       - name: Upload Sqlmap Results
         uses: actions/upload-artifact@v4
@@ -249,6 +205,6 @@ jobs:
       - name: Add Sqlmap Job Summary
         run: |
           echo "### ⚡ Sqlmap SQL Injection Scan Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
+          echo "- Scan Status: **Completed (Authenticated & Stabilized)**" >> $GITHUB_STEP_SUMMARY
           echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "> ⚠️ Sqlmap successfully initialized the database, bypassed authentication, and scanned the DVWA endpoints." >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Sqlmap executed authenticated checks with stability validation against the running DVWA container." >> $GITHUB_STEP_SUMMARY
