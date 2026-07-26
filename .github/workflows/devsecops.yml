@@ -211,9 +211,8 @@ jobs:
         run: |
           # Ανάγνωση του cookie που αποθηκεύτηκε από την Python
           COOKIE_VAL=$(cat session_cookie.txt)
-          printenv COOKIE_VAL
 
-          # Εκτέλεση του OWASP ZAP Baseline Scan περνώντας το cookie μέσω ZAP Replacer rule
+          # Εκτέλεση του OWASP ZAP Baseline Scan (με σωστή σύνταξη παραμέτρων)
           docker run --rm -v $(pwd):/zap/wrk/:rw \
             ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
             -t "http://171.17.0.1/vulnerabilities/sqli/" \
@@ -222,7 +221,7 @@ jobs:
                 -config replacer.full_list(0).matchType=REQ_HEADER \
                 -config replacer.full_list(0).matchStr=Cookie \
                 -config replacer.full_list(0).regex=false \
-                -config replacer.full_list(0.string=$COOKIE_VAL" \
+                -config replacer.full_list(0).replacement=$COOKIE_VAL" \
             -r report.html || true
 
       - name: Upload ZAP Report
