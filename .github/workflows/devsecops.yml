@@ -207,21 +207,19 @@ jobs:
               f.write(cookie_str)
           EOF
 
+      - name: Fix Directory Permissions for ZAP
+        run: |
+          sudo chmod -R 777 $(pwd)
+
       - name: Run OWASP ZAP with Authenticated Cookie via Docker
         run: |
-          # Ανάγνωση του cookie που αποθηκεύτηκε από την Python
           COOKIE_VAL=$(cat session_cookie.txt)
 
-          # Εκτέλεση του OWASP ZAP Baseline Scan (με σωστή σύνταξη παραμέτρων)
+          # Εκτέλεση του ZAP με απλοποιημένο και ασφαλή τρόπο
           docker run --rm -v $(pwd):/zap/wrk/:rw \
             ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
             -t "http://171.17.0.1/vulnerabilities/sqli/" \
-            -z "-config replacer.full_list(0).description=auth \
-                -config replacer.full_list(0).enabled=true \
-                -config replacer.full_list(0).matchType=REQ_HEADER \
-                -config replacer.full_list(0).matchStr=Cookie \
-                -config replacer.full_list(0).regex=false \
-                -config replacer.full_list(0).replacement=$COOKIE_VAL" \
+            -z "-config replacer.full_list(0).description=auth -config replacer.full_list(0).enabled=true -config replacer.full_list(0).matchType=REQ_HEADER -config replacer.full_list(0).matchStr=Cookie -config replacer.full_list(0).regex=false -config replacer.full_list(0).replacement=$COOKIE_VAL" \
             -r report.html || true
 
       - name: Upload ZAP Report
