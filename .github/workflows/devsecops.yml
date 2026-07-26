@@ -167,6 +167,12 @@ jobs:
           docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest
           sleep 15
 
+      - name: Initialize DVWA Database Automatically
+        run: |
+          # Στέλνουμε το αίτημα δημιουργίας βάσης δεδομένων στο DVWA setup.php
+          curl -s -X POST --data "create_db=Create+%2F+Reset+Database" http://127.0.0.1/setup.php > /dev/null
+          sleep 3
+
       - name: Install Sqlmap
         run: sudo apt-get update && sudo apt-get install -y sqlmap
 
@@ -195,4 +201,4 @@ jobs:
           echo "### ⚡ Sqlmap SQL Injection Scan Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
           echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "> ⚠️ Sqlmap executed dynamic checks against the running DVWA container using the \`security=low\` cookie configuration." >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Sqlmap executed dynamic checks against the fully initialized DVWA container." >> $GITHUB_STEP_SUMMARY
