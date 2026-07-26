@@ -167,37 +167,16 @@ jobs:
           docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest
           sleep 15
 
-      - name: Authenticate and get DVWA Session Cookie with CSRF Token
-        run: |
-          # 1. Παίρνουμε τη σελίδα login και αποθηκεύουμε τα cookies
-          curl -s -c cookie.txt http://127.0.0.1/login.php > login.html
-          
-          # 2. Εξάγουμε το κρυφό user_token από το HTML
-          USER_TOKEN=$(grep -oP "name='user_token' value='\K[^']+" login.html || echo "")
-          echo "Extracted user_token: $USER_TOKEN"
-          
-          # 3. Κάνουμε POST τη σύνδεση δίνοντας το token, τα credentials και το security level
-          curl -s -b cookie.txt -c cookie.txt \
-            --data "username=admin&password=password&Login=Login&user_token=$USER_TOKEN" \
-            http://127.0.0.1/login.php > /dev/null
-            
-          # 4. Εξάγουμε το PHPSESSID
-          PHPSESSID=$(grep "PHPSESSID" cookie.txt | awk '{print $NF}')
-          echo "Captured PHPSESSID: $PHPSESSID"
-          
-          # 5. Αποθήκευση στις μεταβλητές του GitHub Actions
-          echo "DVWA_COOKIE=security=low; PHPSESSID=$PHPSESSID" >> $GITHUB_ENV
-
       - name: Install Sqlmap
         run: sudo apt-get update && sudo apt-get install -y sqlmap
 
-      - name: Run Sqlmap with Dynamic Cookie against Endpoints
+      - name: Run Sqlmap with Static Cookie against Endpoints
         run: |
           if [ -f "endpoints.txt" ]; then
             while IFS= read -r endpoint; do
               if [[ ! -z "$endpoint" && "$endpoint" != \#* ]]; then
-                echo "Testing endpoint: $endpoint with dynamic cookie"
-                sqlmap -u "$endpoint" --cookie="$DVWA_COOKIE" --batch --risk=1 --level=1 --output-dir=sqlmap-out || true
+                echo "Testing endpoint: $endpoint with static security=low cookie"
+                sqlmap -u "$endpoint" --cookie="security=low" --dbms=mysql --batch --risk=2 --level=2 --output-dir=sqlmap-out || true
               fi
             done < endpoints.txt
           else
@@ -216,4 +195,4 @@ jobs:
           echo "### ⚡ Sqlmap SQL Injection Scan Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
           echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "> ⚠️ Sqlmap executed dynamic checks against the running DVWA container using proper dynamic session authentication." >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Sqlmap executed dynamic checks against the running DVWA container using the \`security=low\` cookie configuration." >> $GITHUB_STEP_SUMMARY
