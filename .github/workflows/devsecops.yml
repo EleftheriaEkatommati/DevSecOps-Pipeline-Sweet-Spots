@@ -125,16 +125,13 @@ jobs:
     name: Trivy Container Image Scan (Dynamic Category)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Build Docker Image
-        run: docker build -t dvwa:latest .
+      - name: Pull DVWA Docker Image
+        run: docker pull vulnerables/web-dvwa:latest
 
       - name: Run Trivy Image Vulnerability Scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'dvwa:latest'
+          image-ref: 'vulnerables/web-dvwa:latest'
           format: 'json'
           output: 'trivy-container-results.json'
           exit-code: '0'
@@ -167,7 +164,7 @@ jobs:
 
       - name: Start DVWA Container Locally
         run: |
-          docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest || docker run -d -p 80:80 --name dvwa-app php:7.4-apache
+          docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest
           sleep 15
 
       - name: Install Sqlmap
