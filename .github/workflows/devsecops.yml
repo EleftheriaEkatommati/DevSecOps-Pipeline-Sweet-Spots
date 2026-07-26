@@ -176,7 +176,7 @@ jobs:
         run: |
           sudo apt-get update && sudo apt-get install -y sqlmap python3-requests
 
-      - name: Run Python Auth & Sqlmap Scan
+      - name: Run Python Auth & Sqlmap Scan with Redirect Bypass
         run: |
           python3 - << 'EOF'
           import requests
@@ -208,7 +208,7 @@ jobs:
           cookie_str = "; ".join([f"{name}={value}" for name, value in session.cookies.items()])
           print(f"Active Session Cookies: {cookie_str}")
 
-          # 4. Εκτέλεση sqlmap για κάθε endpoint
+          # 4. Εκτέλεση sqlmap με το --ignore-redirects
           import os
           if os.path.exists("endpoints.txt"):
               with open("endpoints.txt", "r") as f:
@@ -222,6 +222,7 @@ jobs:
                       "--cookie", cookie_str,
                       "--dbms", "mysql",
                       "-p", "id",
+                      "--ignore-redirects",
                       "--batch",
                       "--risk", "2",
                       "--level", "2",
@@ -244,4 +245,4 @@ jobs:
           echo "### ⚡ Sqlmap SQL Injection Scan Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
           echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "> ⚠️ Sqlmap executed successfully using robust Python-based session handling and automated authentication." >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Sqlmap successfully completed dynamic security testing bypassing redirects." >> $GITHUB_STEP_SUMMARY
