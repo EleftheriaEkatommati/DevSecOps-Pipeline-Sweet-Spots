@@ -155,8 +155,8 @@ jobs:
             echo "> ✅ No vulnerabilities reported in image." >> $GITHUB_STEP_SUMMARY
           fi
 
-  sqlmap-dynamic-scan:
-    name: SQL Injection Scan via Sqlmap (Dynamic Category)
+  zap-dynamic-scan:
+    name: SQL Injection & Vulnerability Scan via OWASP ZAP
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -172,27 +172,22 @@ jobs:
           curl -s -X POST --data "create_db=Create+%2F+Reset+Database" http://127.0.0.1/setup.php > /dev/null
           sleep 3
 
-      - name: Install Sqlmap and Python Requests
-        run: |
-          sudo apt-get update && sudo apt-get install -y sqlmap python3-requests
-
-      - name: Run Python Auth & Sqlmap Scan
+      - name: Authenticate and Grab Session Cookie for ZAP
         run: |
           python3 - << 'EOF'
           import requests
-          import subprocess
           import re
 
           session = requests.Session()
           login_url = "http://127.0.0.1/login.php"
           
-          # 1. Λήψη σελίδας σύνδεσης για το CSRF token
+          # 1. Λήψη CSRF token
           resp = session.get(login_url)
           token_match = re.search(r"name='user_token' value='(.*?)'", resp.text)
           user_token = token_match.group(1) if token_match else ""
           print(f"Extracted user_token: {user_token}")
 
-          # 2. Υποβολή διαπιστευτηρίων σύνδεσης
+          # 2. Login στο DVWA
           payload = {
               "username": "admin",
               "password": "password",
@@ -201,47 +196,45 @@ jobs:
           }
           session.post(login_url, data=payload)
           
-          # 3. Ορισμός επιπέδου ασφαλείας DVWA
+          # 3. Ορισμός security level σε low
           session.cookies.set("security", "low")
-
-          # Δημιουργία string cookies για το sqlmap
+          
+          # 4. Δημιουργία και αποθήκευση του cookie string
           cookie_str = "; ".join([f"{name}={value}" for name, value in session.cookies.items()])
           print(f"Active Session Cookies: {cookie_str}")
-
-          # 4. Εκτέλεση sqlmap για κάθε endpoint
-          import os
-          if os.path.exists("endpoints.txt"):
-              with open("endpoints.txt", "r") as f:
-                  endpoints = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
-              
-              for ep in endpoints:
-                  print(f"Testing endpoint: {ep}")
-                  cmd = [
-                      "sqlmap",
-                      "-u", ep,
-                      "--cookie", cookie_str,
-                      "--dbms", "mysql",
-                      "-p", "id",
-                      "--batch",
-                      "--risk", "2",
-                      "--level", "2",
-                      "--output-dir", "sqlmap-out"
-                  ]
-                  subprocess.run(cmd)
-          else:
-              print("endpoints.txt not found!")
+          
+          with open("session_cookie.txt", "w") as f:
+              f.write(cookie_str)
           EOF
 
-      - name: Upload Sqlmap Results
+      - name: Run OWASP ZAP with Authenticated Cookie via Docker
+        run: |
+          # Ανάγνωση του cookie που αποθηκεύτηκε από την Python
+          COOKIE_VAL=$(cat session_cookie.txt)
+          printenv COOKIE_VAL
+
+          # Εκτέλεση του OWASP ZAP Baseline Scan περνώντας το cookie μέσω ZAP Replacer rule
+          docker run --rm -v $(pwd):/zap/wrk/:rw \
+            ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+            -t "http://171.17.0.1/vulnerabilities/sqli/" \
+            -z "-config replacer.full_list(0).description=auth \
+                -config replacer.full_list(0).enabled=true \
+                -config replacer.full_list(0).matchType=REQ_HEADER \
+                -config replacer.full_list(0).matchStr=Cookie \
+                -config replacer.full_list(0).regex=false \
+                -config replacer.full_list(0.string=$COOKIE_VAL" \
+            -r report.html || true
+
+      - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
-          name: sqlmap-security-report
-          path: sqlmap-out/
+          name: zap-security-report
+          path: report.html
           retention-days: 7
 
-      - name: Add Sqlmap Job Summary
+      - name: Add ZAP Job Summary
         run: |
-          echo "### ⚡ Sqlmap SQL Injection Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "### ⚡ OWASP ZAP Scan Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
-          echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "> ⚠️ Sqlmap executed successfully using robust Python-based session handling and automated authentication." >> $GITHUB_STEP_SUMMARY
+          echo "- Target: \`http://171.17.0.1/vulnerabilities/sqli/\`" >> $GITHUB_STEP_SUMMARY
+          echo "> 🛡️ Authenticated scan executed successfully using Python session handling and ZAP container." >> $GITHUB_STEP_SUMMARY
