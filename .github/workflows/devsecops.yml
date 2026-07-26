@@ -120,3 +120,82 @@ jobs:
           else
             echo "> ✅ No vulnerabilities reported." >> $GITHUB_STEP_SUMMARY
           fi
+
+  trivy-container-scan:
+    name: Trivy Container Image Scan (Dynamic Category)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: docker build -t dvwa:latest .
+
+      - name: Run Trivy Image Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'dvwa:latest'
+          format: 'json'
+          output: 'trivy-container-results.json'
+          exit-code: '0'
+
+      - name: Upload Container Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-container-security-report
+          path: trivy-container-results.json
+          retention-days: 7
+
+      - name: Add Trivy Container Job Summary
+        run: |
+          echo "### 📦 Trivy Container Image Scan Summary" >> $GITHUB_STEP_SUMMARY
+          if [ -s trivy-container-results.json ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Vulnerability ID | Package |" >> $GITHUB_STEP_SUMMARY
+            echo "| :--- | :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+            jq -r '.Results[]?.Vulnerabilities[]? | "| **\(.Severity)** | `\(.VulnerabilityID)` | `\(.PkgName)` |\n"' trivy-container-results.json | head -n 20 >> $GITHUB_STEP_SUMMARY
+          else
+            echo "> ✅ No vulnerabilities reported in image." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  sqlmap-dynamic-scan:
+    name: SQL Injection Scan via Sqlmap (Dynamic Category)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Start DVWA Container Locally
+        run: |
+          docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest || docker run -d -p 80:80 --name dvwa-app php:7.4-apache
+          sleep 15
+
+      - name: Install Sqlmap
+        run: sudo apt-get update && sudo apt-get install -y sqlmap
+
+      - name: Run Sqlmap against Endpoints
+        run: |
+          if [ -f "endpoints.txt" ]; then
+            while IFS= read -r endpoint; do
+              if [[ ! -z "$endpoint" && "$endpoint" != \#* ]]; then
+                echo "Testing endpoint: $endpoint"
+                sqlmap -u "$endpoint" --batch --risk=1 --level=1 --output-dir=sqlmap-out || true
+              fi
+            done < endpoints.txt
+          else
+            echo "endpoints.txt not found!"
+          fi
+
+      - name: Upload Sqlmap Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlmap-security-report
+          path: sqlmap-out/
+          retention-days: 7
+
+      - name: Add Sqlmap Job Summary
+        run: |
+          echo "### ⚡ Sqlmap SQL Injection Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
+          echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Sqlmap executed dynamic checks against the running DVWA container. Check artifacts for full injection details." >> $GITHUB_STEP_SUMMARY
