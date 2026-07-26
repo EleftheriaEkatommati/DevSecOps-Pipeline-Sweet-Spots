@@ -175,8 +175,8 @@ jobs:
           if [ -f "endpoints.txt" ]; then
             while IFS= read -r endpoint; do
               if [[ ! -z "$endpoint" && "$endpoint" != \#* ]]; then
-                echo "Testing endpoint: $endpoint with static security=low cookie"
-                sqlmap -u "$endpoint" --cookie="security=low" --dbms=mysql --batch --risk=2 --level=2 --output-dir=sqlmap-out || true
+                echo "Testing endpoint: $endpoint with explicit parameter targeting (-p id)"
+                sqlmap -u "$endpoint" --cookie="security=low" --dbms=mysql -p id --batch --risk=2 --level=2 --output-dir=sqlmap-out || true
               fi
             done < endpoints.txt
           else
