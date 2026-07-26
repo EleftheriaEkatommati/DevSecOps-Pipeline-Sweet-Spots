@@ -167,21 +167,25 @@ jobs:
           docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest
           sleep 15
 
-      - name: Authenticate and get DVWA Session Cookie
+      - name: Authenticate and get DVWA Session Cookie with CSRF Token
         run: |
-          # 1. Κάνουμε αίτημα στη σελίδα login για να πάρουμε το αρχικό cookie
-          curl -s -c cookie.txt http://127.0.0.1/login.php
+          # 1. Παίρνουμε τη σελίδα login και αποθηκεύουμε τα cookies
+          curl -s -c cookie.txt http://127.0.0.1/login.php > login.html
           
-          # 2. Κάνουμε POST τα στοιχεία σύνδεσης (admin / password) μαζί με το επίπεδο ασφαλείας
+          # 2. Εξάγουμε το κρυφό user_token από το HTML
+          USER_TOKEN=$(grep -oP "name='user_token' value='\K[^']+" login.html || echo "")
+          echo "Extracted user_token: $USER_TOKEN"
+          
+          # 3. Κάνουμε POST τη σύνδεση δίνοντας το token, τα credentials και το security level
           curl -s -b cookie.txt -c cookie.txt \
-            --data "username=admin&password=password&Login=Login" \
+            --data "username=admin&password=password&Login=Login&user_token=$USER_TOKEN" \
             http://127.0.0.1/login.php > /dev/null
             
-          # 3. Εξάγουμε το PHPSESSID από το αρχείο cookies
+          # 4. Εξάγουμε το PHPSESSID
           PHPSESSID=$(grep "PHPSESSID" cookie.txt | awk '{print $NF}')
           echo "Captured PHPSESSID: $PHPSESSID"
           
-          # 4. Το αποθηκεύουμε στις μεταβλητές περιβάλλοντος του GitHub Actions
+          # 5. Αποθήκευση στις μεταβλητές του GitHub Actions
           echo "DVWA_COOKIE=security=low; PHPSESSID=$PHPSESSID" >> $GITHUB_ENV
 
       - name: Install Sqlmap
@@ -212,4 +216,4 @@ jobs:
           echo "### ⚡ Sqlmap SQL Injection Scan Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Scan Status: **Completed**" >> $GITHUB_STEP_SUMMARY
           echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "> ⚠️ Sqlmap executed dynamic checks against the running DVWA container using dynamic authentication. Check artifacts for full injection details." >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Sqlmap executed dynamic checks against the running DVWA container using proper dynamic session authentication." >> $GITHUB_STEP_SUMMARY
