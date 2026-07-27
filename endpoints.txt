@@ -1,2 +1,2 @@
-http://127.0.0.1/vulnerabilities/sqli/?id=1&Submit=Submit
-http://127.0.0.1/vulnerabilities/sqli_blind/?id=1&Submit=Submit
+http://127.0.0.1/vulnerabilities/sqli/
+http://127.0.0.1/vulnerabilities/sqli_blind/

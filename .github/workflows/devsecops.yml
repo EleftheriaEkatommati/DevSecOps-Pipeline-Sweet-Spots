@@ -193,7 +193,7 @@ jobs:
                 echo "Testing endpoint: $endpoint"
                 sqlmap -u "$endpoint" \
                   --cookie="PHPSESSID=$PHPSESSID; security=low" \
-                  --forms \
+                  --data \
                   --technique=EU \
                   --batch \
                   --risk=1 \
