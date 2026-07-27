@@ -156,7 +156,7 @@ jobs:
           fi
 
   sqlmap-dynamic-scan:
-    name: SQL Injection Scan via Sqlmap (Dynamic Category)
+    name: SQL Injection Scan via Sqlmap (POST & In-Band)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -174,21 +174,28 @@ jobs:
       - name: Install Sqlmap
         run: sudo apt-get update && sudo apt-get install -y sqlmap
 
-      - name: Run Authenticated Sqlmap Scan with Stability Fix
+      - name: Run Authenticated Sqlmap Scan
         run: |
-          # 1. Σύνδεση στο DVWA και αποθήκευση session cookies
+          # 1. Login to DVWA and save session cookies
           curl -s -c cookies.txt -d "username=admin&password=password&Login=Login" http://127.0.0.1/login.php > /dev/null
           
-          # 2. Εξαγωγή του PHPSESSID δυναμικά
+          # 2. Extract PHPSESSID dynamically
           PHPSESSID=$(grep "PHPSESSID" cookies.txt | tail -n 1 | awk '{print $NF}')
           echo "Active Session Cookie: PHPSESSID=$PHPSESSID"
 
-          # 3. Εκτέλεση sqlmap με το cookie, το επίπεδο ασφαλείας και την παράμετρο --string
+          # 3. Run sqlmap with POST form parsing (--forms) and UNION/Error techniques (--technique=EU)
           if [ -f "endpoints.txt" ]; then
             while IFS= read -r endpoint; do
               if [[ ! -z "$endpoint" && "$endpoint" != \#* ]]; then
                 echo "Testing endpoint: $endpoint"
-                sqlmap -u "$endpoint" --cookie="PHPSESSID=$PHPSESSID; security=low" --string="Vulnerability: SQL Injection" --batch --risk=1 --level=1 --output-dir=sqlmap-out || true
+                sqlmap -u "$endpoint" \
+                  --cookie="PHPSESSID=$PHPSESSID; security=low" \
+                  --forms \
+                  --technique=EU \
+                  --batch \
+                  --risk=1 \
+                  --level=1 \
+                  --output-dir=sqlmap-out || true
               fi
             done < endpoints.txt
           else
@@ -205,6 +212,6 @@ jobs:
       - name: Add Sqlmap Job Summary
         run: |
           echo "### ⚡ Sqlmap SQL Injection Scan Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Scan Status: **Completed (Authenticated & Stabilized)**" >> $GITHUB_STEP_SUMMARY
+          echo "- Scan Status: **Completed (Authenticated, POST Forms, In-Band Only)**" >> $GITHUB_STEP_SUMMARY
           echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
-          echo "> ⚠️ Sqlmap executed authenticated checks with stability validation against the running DVWA container." >> $GITHUB_STEP_SUMMARY
+          echo "> ⚠️ Sqlmap executed Error and UNION-based checks against form inputs on the running DVWA container." >> $GITHUB_STEP_SUMMARY
