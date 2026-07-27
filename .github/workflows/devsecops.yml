@@ -177,7 +177,10 @@ jobs:
       - name: Run Authenticated Sqlmap Scan
         run: |
           # 1. Login to DVWA and save session cookies
-          curl -s -c cookies.txt -d "username=admin&password=password&Login=Login" http://127.0.0.1/login.php > /dev/null
+          CSRF_TOKEN=$(curl -s -c cookies.txt http://127.0.0.1/login.php | awk -F"value='" '/user_token/ {print $2}' | cut -d"'" -f1)
+
+          # 2. Login using the credentials AND the extracted CSRF token
+          curl -s -b cookies.txt -c cookies.txt -d "username=admin&password=password&Login=Login&use
           
           # 2. Extract PHPSESSID dynamically
           PHPSESSID=$(grep "PHPSESSID" cookies.txt | tail -n 1 | awk '{print $NF}')
