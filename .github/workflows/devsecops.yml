@@ -176,24 +176,24 @@ jobs:
 
       - name: Run Authenticated Sqlmap Scan
         run: |
-          # 1. Login to DVWA and save session cookies
+          # 1. Visit login page to grab the initial cookie and extract the CSRF token
           CSRF_TOKEN=$(curl -s -c cookies.txt http://127.0.0.1/login.php | awk -F"value='" '/user_token/ {print $2}' | cut -d"'" -f1)
 
-          # 2. Login using the credentials AND the extracted CSRF token
-          curl -s -b cookies.txt -c cookies.txt -d "username=admin&password=password&Login=Login&use
-          
-          # 2. Extract PHPSESSID dynamically
+          # 2. Login using the credentials AND the extracted CSRF token (FIXED UNCLOSED QUOTE & MISSING URL)
+          curl -s -b cookies.txt -c cookies.txt -d "username=admin&password=password&Login=Login&user_token=$CSRF_TOKEN" http://127.0.0.1/login.php > /dev/null
+
+          # 3. Extract PHPSESSID dynamically
           PHPSESSID=$(grep "PHPSESSID" cookies.txt | tail -n 1 | awk '{print $NF}')
           echo "Active Session Cookie: PHPSESSID=$PHPSESSID"
 
-          # 3. Run sqlmap with POST form parsing (--forms) and UNION/Error techniques (--technique=EU)
+          # 4. Run sqlmap with POST data (FIXED EMPTY --data FLAG)
           if [ -f "endpoints.txt" ]; then
             while IFS= read -r endpoint; do
               if [[ ! -z "$endpoint" && "$endpoint" != \#* ]]; then
                 echo "Testing endpoint: $endpoint"
                 sqlmap -u "$endpoint" \
                   --cookie="PHPSESSID=$PHPSESSID; security=low" \
-                  --data \
+                  --data="id=1&Submit=Submit" \
                   --technique=EU \
                   --batch \
                   --risk=1 \
