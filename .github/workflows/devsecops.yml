@@ -169,7 +169,11 @@ jobs:
 
       - name: Initialize DVWA Database
         run: |
-          curl -s -X POST --data "create_db=Create+%2F+Reset+Database" http://127.0.0.1/setup.php > /dev/null
+          # 1. Get a session cookie and extract the setup token
+          SETUP_TOKEN=$(curl -s -c cookies.txt http://127.0.0.1/setup.php | awk -F"value='" '/user_token/ {print $2}' | cut -d"'" -f1)
+          
+          # 2. Submit the database creation request WITH the token
+          curl -s -b cookies.txt -c cookies.txt -d "create_db=Create+%2F+Reset+Database&user_token=$SETUP_TOKEN" http://127.0.0.1/setup.php > /dev/null
 
       - name: Install Sqlmap
         run: sudo apt-get update && sudo apt-get install -y sqlmap
