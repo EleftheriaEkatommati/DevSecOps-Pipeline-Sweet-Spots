@@ -200,7 +200,6 @@ jobs:
                   --data="id=1&Submit=Submit" \
                   --technique=EU \
                   --batch \
-                  --answers="keep testing=Y" \
                   --risk=1 \
                   --level=1 \
                   --output-dir=sqlmap-out || true
