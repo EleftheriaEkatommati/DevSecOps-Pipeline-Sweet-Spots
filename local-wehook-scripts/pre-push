@@ -1,0 +1,31 @@
+#!/bin/sh
+
+echo "----------------------------------------"
+echo "Running local Pre-push Security Checks..."
+echo "----------------------------------------"
+
+# 1. Check if Docker is running
+if ! docker info > /dev/null 2>&1; then
+    echo "[!] ERROR: Docker daemon is not running."
+    echo "[!] Please start Docker and try your push again."
+    exit 1
+fi
+
+# 2. Run PHPStan SAST via Docker container
+echo "[*] Running PHPStan static code analysis..."
+docker run --rm -v "$(pwd)":/app phpstan/phpstan analyse /app --level=1
+PEXIT=$?
+
+# 3. Evaluate exit codes
+if [ $PEXIT -eq 0 ]; then
+    echo "[+] PHPStan: No critical code issues found. Check passed!"
+else
+    echo "----------------------------------------"
+    echo "[!] SECURITY/QUALITY ERROR: PHPStan detected code issues!"
+    echo "[!] Push REJECTED. Fix the issues before pushing."
+    echo "----------------------------------------"
+    exit 1
+fi
+
+echo "[+] All local pre-push checks passed successfully!"
+exit 0
