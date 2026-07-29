@@ -154,6 +154,42 @@ jobs:
           else
             echo "> ✅ No vulnerabilities reported in image." >> $GITHUB_STEP_SUMMARY
           fi
+  nmap-port-scan:
+    name: Nmap Port & Service Scan (Dynamic)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Start DVWA Container Locally
+        run: |
+          docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest
+          # Δίνουμε χρόνο στην εφαρμογή να ξεκινήσει πλήρως
+          sleep 10 
+
+      - name: Install Nmap
+        run: sudo apt-get update && sudo apt-get install -y nmap
+
+      - name: Run Nmap Scan on Executing Container
+        run: |
+          # Εκτελούμε nmap για Service Version (-sV) και Default Scripts (-sC) 
+          # στην πόρτα 80 του localhost (όπου τρέχει το DVWA)
+          nmap -sV -sC -p 80 localhost -oN nmap-results.txt
+
+      - name: Upload Nmap Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: nmap-security-report
+          path: nmap-results.txt
+          retention-days: 7
+
+      - name: Add Nmap Job Summary
+        run: |
+          echo "### 🔍 Nmap Dynamic Port & Service Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Σάρωση της εκτελούμενης εφαρμογής DVWA για ανοιχτές θύρες και υπηρεσίες." >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat nmap-results.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
 
   sqlmap-dynamic-scan:
     name: SQL Injection Scan via Sqlmap (POST & In-Band)
