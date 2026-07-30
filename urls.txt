@@ -1,0 +1,3 @@
+http://localhost:80/vulnerabilities/sqli/
+http://localhost:80/vulnerabilities/xss_r/
+http://localhost:80/vulnerabilities/exec/
