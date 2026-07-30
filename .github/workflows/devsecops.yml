@@ -302,7 +302,6 @@ jobs:
       - name: Run ZAP Full Scan (Targeted DAST)
         uses: zaproxy/action-full-scan@v0.12.0
         env:
-          # Περνάμε το Cookie ως HTTP Header σε κάθε request του ZAP
           ZAP_AUTH_HEADER: "Cookie"
           ZAP_AUTH_HEADER_VALUE: "PHPSESSID=${{ env.PHPSESSID }}; security=low"
           ZAP_AUTH_HEADER_SITE: "localhost"
@@ -310,10 +309,10 @@ jobs:
           target: 'http://localhost:80'
           allow_issue_writing: false
           fail_action: false
-          # cmd_options:
-          # -j ενεργοποιεί τον AJAX Spider 
-          # -U του λέει να διαβάσει το αρχείο με τα urls που φτιάξαμε
-          cmd_options: '-j -U /zap/wrk/urls.txt'
+          # Κρατάμε ΜΟΝΟ το -j για να τρέξει ο AJAX Spider.
+          # Ο AJAX Spider καταλαβαίνει JavaScript και θα κάνει κλικ σε όλο το μενού του DVWA
+          # χρησιμοποιώντας το Cookie που του δώσαμε.
+          cmd_options: '-j'
 
       - name: Upload ZAP Report
         if: always() # Για να ανέβει το report ακόμα κι αν "σκάσει" το βήμα
