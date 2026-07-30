@@ -258,8 +258,8 @@ jobs:
           echo "- Scan Status: **Completed (Authenticated, POST Forms, In-Band Only)**" >> $GITHUB_STEP_SUMMARY
           echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
           echo "> ⚠️ Sqlmap executed Error and UNION-based checks against form inputs on the running DVWA container." >> $GITHUB_STEP_SUMMARY
-  zap-targeted-dynamic-scan:
-    name: Targeted DAST Scan via OWASP ZAP
+  zap-deep-dast-scan:
+    name: Deep DAST Scan via OWASP ZAP (Bypassed Login)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -270,62 +270,64 @@ jobs:
           docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest || docker run -d -p 80:80 --name dvwa-app php:7.4-apache
           sleep 15
 
-      - name: Create Target URLs File
-        run: |
-          # Δημιουργούμε δυναμικά το αρχείο urls.txt στο workspace του runner
-          cat <<EOF > urls.txt
-          http://localhost:80/vulnerabilities/sqli/
-          http://localhost:80/vulnerabilities/xss_r/
-          http://localhost:80/vulnerabilities/xss_s/
-          http://localhost:80/vulnerabilities/exec/
-          http://localhost:80/vulnerabilities/upload/
-          EOF
-          echo "Created urls.txt with the following targets:"
-          cat urls.txt
-
       - name: Initialize DVWA Database
         run: |
-          # Παίρνουμε το token και φτιάχνουμε τη βάση (για να δουλεύουν τα modules)
+          # 1. Grab setup token
           SETUP_TOKEN=$(curl -s -c cookies.txt http://127.0.0.1/setup.php | awk -F"value='" '/user_token/ {print $2}' | cut -d"'" -f1)
+          
+          # 2. Trigger database creation
           curl -s -b cookies.txt -c cookies.txt -d "create_db=Create+%2F+Reset+Database&user_token=$SETUP_TOKEN" http://127.0.0.1/setup.php > /dev/null
 
-      - name: Authenticate and Extract Session Cookie
+      - name: Bypass DVWA Login & Hardcode Low Security
         run: |
-          # Κάνουμε Login και αποθηκεύουμε το Cookie στα Environment Variables
-          CSRF_TOKEN=$(curl -s -c cookies.txt http://127.0.0.1/login.php | awk -F"value='" '/user_token/ {print $2}' | cut -d"'" -f1)
-          curl -s -b cookies.txt -c cookies.txt -d "username=admin&password=password&Login=Login&user_token=$CSRF_TOKEN" http://127.0.0.1/login.php > /dev/null
+          echo "Patching DVWA inside the Docker container to disable login checks..."
           
-          PHPSESSID=$(grep "PHPSESSID" cookies.txt | tail -n 1 | awk '{print $NF}')
-          echo "Active Session Cookie: PHPSESSID=$PHPSESSID"
-          echo "PHPSESSID=$PHPSESSID" >> $GITHUB_ENV
+          # 1. Patch dvwaIsLoggedIn() to ALWAYS return true
+          docker exec dvwa-app bash -c "sed -i 's/function dvwaIsLoggedIn().*/function dvwaIsLoggedIn() { return true; }/g' /var/www/html/dvwa/includes/dvwaPage.inc.php"
+          
+          # 2. Hardcode the session username to 'admin' so the application knows who is making requests
+          docker exec dvwa-app bash -c "sed -i '/function dvwaPageStart()/a \$_SESSION[\"username\"] = \"admin\";' /var/www/html/dvwa/includes/dvwaPage.inc.php"
+          
+          # 3. Force default security level to 'low' for all endpoints
+          docker exec dvwa-app bash -c "sed -i 's/security = \"high\"/security = \"low\"/g' /var/www/html/config/config.inc.php 2>/dev/null || true"
+          docker exec dvwa-app bash -c "sed -i 's/\$security_level = .*/\$security_level = \"low\";/g' /var/www/html/dvwa/includes/dvwaPage.inc.php 2>/dev/null || true"
 
-      - name: Run ZAP Full Scan (Targeted DAST)
+      - name: Verify Bypass Working
+        run: |
+          # Test accessing a protected endpoint directly without cookies
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/vulnerabilities/sqli/)
+          echo "Protected SQLi endpoint returned HTTP Status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -eq 200 ]; then
+            echo "SUCCESS: DVWA Login successfully bypassed! Endpoints are publicly accessible to ZAP."
+          else
+            echo "WARNING: Endpoint returned $HTTP_STATUS. ZAP might still run into authentication walls."
+          fi
+
+      - name: Run ZAP Full Scan (AJAX Spider Enabled)
         uses: zaproxy/action-full-scan@v0.12.0
         env:
+          # Set cookie header just in case DVWA looks for the security level in cookies
           ZAP_AUTH_HEADER: "Cookie"
-          ZAP_AUTH_HEADER_VALUE: "PHPSESSID=${{ env.PHPSESSID }}; security=low"
+          ZAP_AUTH_HEADER_VALUE: "security=low"
           ZAP_AUTH_HEADER_SITE: "localhost"
         with:
           target: 'http://localhost:80'
           allow_issue_writing: false
           fail_action: false
-          # Κρατάμε ΜΟΝΟ το -j για να τρέξει ο AJAX Spider.
-          # Ο AJAX Spider καταλαβαίνει JavaScript και θα κάνει κλικ σε όλο το μενού του DVWA
-          # χρησιμοποιώντας το Cookie που του δώσαμε.
           cmd_options: '-j'
 
       - name: Upload ZAP Report
-        if: always() # Για να ανέβει το report ακόμα κι αν "σκάσει" το βήμα
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: zap-targeted-security-report
+          name: zap-deep-scan-report
           path: report_html.html
           retention-days: 7
 
       - name: Add ZAP Job Summary
         if: always()
         run: |
-          echo "### 🎯 OWASP ZAP Targeted DAST Scan Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Scan Status: **Completed (Targeted Endpoints via urls.txt)**" >> $GITHUB_STEP_SUMMARY
-          echo "- Target: \`http://localhost:80\`" >> $GITHUB_STEP_SUMMARY
-          echo "> 🛡️ Το OWASP ZAP διάβασε τη λίστα με τα URLs, έκανε inject το authentication cookie, και εστίασε τον έλεγχο αποκλειστικά στα ευάλωτα endpoints." >> $GITHUB_STEP_SUMMARY
+          echo "### 🔓 OWASP ZAP Deep DAST Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Authentication Mode:** Bypassed via Application Patching (Whitebox DAST)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target:** \`http://localhost:80\`" >> $GITHUB_STEP_SUMMARY
+          echo "> 🛡️ OWASP ZAP was able to freely crawl and attack internal DVWA modules without hitting login redirects." >> $GITHUB_STEP_SUMMARY
