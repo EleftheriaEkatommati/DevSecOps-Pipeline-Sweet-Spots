@@ -272,44 +272,30 @@ jobs:
 
       - name: Initialize DVWA Database
         run: |
-          # 1. Grab setup token
           SETUP_TOKEN=$(curl -s -c cookies.txt http://127.0.0.1/setup.php | awk -F"value='" '/user_token/ {print $2}' | cut -d"'" -f1)
-          
-          # 2. Trigger database creation
           curl -s -b cookies.txt -c cookies.txt -d "create_db=Create+%2F+Reset+Database&user_token=$SETUP_TOKEN" http://127.0.0.1/setup.php > /dev/null
 
-      - name: Bypass DVWA Login & Hardcode Low Security
+      - name: Bypass DVWA Login (Safe Sed)
         run: |
-          echo "Patching DVWA inside the Docker container to disable login checks..."
+          echo "Safely patching DVWA..."
+          # Replace the entire dvwaIsLoggedIn block with a simple return true.
+          docker exec dvwa-app sed -i 's/function dvwaIsLoggedIn().*/function dvwaIsLoggedIn() { return true; }/g' /var/www/html/dvwa/includes/dvwaPage.inc.php
           
-          # 1. Patch dvwaIsLoggedIn() to ALWAYS return true
-          docker exec dvwa-app bash -c "sed -i 's/function dvwaIsLoggedIn().*/function dvwaIsLoggedIn() { return true; }/g' /var/www/html/dvwa/includes/dvwaPage.inc.php"
-          
-          # 2. Hardcode the session username to 'admin' so the application knows who is making requests
-          docker exec dvwa-app bash -c "sed -i '/function dvwaPageStart()/a \$_SESSION[\"username\"] = \"admin\";' /var/www/html/dvwa/includes/dvwaPage.inc.php"
-          
-          # 3. Force default security level to 'low' for all endpoints
-          docker exec dvwa-app bash -c "sed -i 's/security = \"high\"/security = \"low\"/g' /var/www/html/config/config.inc.php 2>/dev/null || true"
-          docker exec dvwa-app bash -c "sed -i 's/\$security_level = .*/\$security_level = \"low\";/g' /var/www/html/dvwa/includes/dvwaPage.inc.php 2>/dev/null || true"
+          # Force security to low without injecting variables
+          docker exec dvwa-app sed -i 's/security = "high"/security = "low"/g' /var/www/html/config/config.inc.php
 
-      - name: Verify Bypass Working
+      - name: Verify Application is Alive
         run: |
-          # Test accessing a protected endpoint directly without cookies
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/vulnerabilities/sqli/)
-          echo "Protected SQLi endpoint returned HTTP Status: $HTTP_STATUS"
-          if [ "$HTTP_STATUS" -eq 200 ]; then
-            echo "SUCCESS: DVWA Login successfully bypassed! Endpoints are publicly accessible to ZAP."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/login.php)
+          if [ "$HTTP_STATUS" -eq 500 ]; then
+            echo "ERROR: The sed patch broke the application (HTTP 500). Exiting."
+            exit 1
           else
-            echo "WARNING: Endpoint returned $HTTP_STATUS. ZAP might still run into authentication walls."
+            echo "SUCCESS: Application is alive (HTTP $HTTP_STATUS)."
           fi
 
       - name: Run ZAP Full Scan (AJAX Spider Enabled)
         uses: zaproxy/action-full-scan@v0.12.0
-        env:
-          # Set cookie header just in case DVWA looks for the security level in cookies
-          ZAP_AUTH_HEADER: "Cookie"
-          ZAP_AUTH_HEADER_VALUE: "security=low"
-          ZAP_AUTH_HEADER_SITE: "localhost"
         with:
           target: 'http://localhost:80'
           allow_issue_writing: false
@@ -323,11 +309,3 @@ jobs:
           name: zap-deep-scan-report
           path: report_html.html
           retention-days: 7
-
-      - name: Add ZAP Job Summary
-        if: always()
-        run: |
-          echo "### 🔓 OWASP ZAP Deep DAST Scan Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- **Authentication Mode:** Bypassed via Application Patching (Whitebox DAST)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Target:** \`http://localhost:80\`" >> $GITHUB_STEP_SUMMARY
-          echo "> 🛡️ OWASP ZAP was able to freely crawl and attack internal DVWA modules without hitting login redirects." >> $GITHUB_STEP_SUMMARY
