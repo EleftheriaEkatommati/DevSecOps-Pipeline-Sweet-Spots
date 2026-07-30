@@ -258,8 +258,8 @@ jobs:
           echo "- Scan Status: **Completed (Authenticated, POST Forms, In-Band Only)**" >> $GITHUB_STEP_SUMMARY
           echo "- Target Endpoints: Checked via \`endpoints.txt\`" >> $GITHUB_STEP_SUMMARY
           echo "> ⚠️ Sqlmap executed Error and UNION-based checks against form inputs on the running DVWA container." >> $GITHUB_STEP_SUMMARY
-  zap-dynamic-scan:
-    name: DAST Scan via OWASP ZAP
+  zap-targeted-dynamic-scan:
+    name: Targeted DAST Scan via OWASP ZAP
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -270,32 +270,39 @@ jobs:
           docker run -d -p 80:80 --name dvwa-app vulnerables/web-dvwa:latest || docker run -d -p 80:80 --name dvwa-app php:7.4-apache
           sleep 15
 
+      - name: Create Target URLs File
+        run: |
+          # Δημιουργούμε δυναμικά το αρχείο urls.txt στο workspace του runner
+          cat <<EOF > urls.txt
+          http://localhost:80/vulnerabilities/sqli/
+          http://localhost:80/vulnerabilities/xss_r/
+          http://localhost:80/vulnerabilities/xss_s/
+          http://localhost:80/vulnerabilities/exec/
+          http://localhost:80/vulnerabilities/upload/
+          EOF
+          echo "Created urls.txt with the following targets:"
+          cat urls.txt
+
       - name: Initialize DVWA Database
         run: |
-          # 1. Get a session cookie and extract the setup token
+          # Παίρνουμε το token και φτιάχνουμε τη βάση (για να δουλεύουν τα modules)
           SETUP_TOKEN=$(curl -s -c cookies.txt http://127.0.0.1/setup.php | awk -F"value='" '/user_token/ {print $2}' | cut -d"'" -f1)
-          
-          # 2. Submit the database creation request WITH the token
           curl -s -b cookies.txt -c cookies.txt -d "create_db=Create+%2F+Reset+Database&user_token=$SETUP_TOKEN" http://127.0.0.1/setup.php > /dev/null
 
       - name: Authenticate and Extract Session Cookie
-        id: auth
         run: |
-          # 1. Visit login page to grab the initial cookie and extract the CSRF token
+          # Κάνουμε Login και αποθηκεύουμε το Cookie στα Environment Variables
           CSRF_TOKEN=$(curl -s -c cookies.txt http://127.0.0.1/login.php | awk -F"value='" '/user_token/ {print $2}' | cut -d"'" -f1)
-
-          # 2. Login using the credentials AND the extracted CSRF token
           curl -s -b cookies.txt -c cookies.txt -d "username=admin&password=password&Login=Login&user_token=$CSRF_TOKEN" http://127.0.0.1/login.php > /dev/null
-
-          # 3. Extract PHPSESSID dynamically and save it to GITHUB_ENV so ZAP can use it
+          
           PHPSESSID=$(grep "PHPSESSID" cookies.txt | tail -n 1 | awk '{print $NF}')
           echo "Active Session Cookie: PHPSESSID=$PHPSESSID"
           echo "PHPSESSID=$PHPSESSID" >> $GITHUB_ENV
 
-      - name: Run ZAP Full Scan (DAST)
+      - name: Run ZAP Full Scan (Targeted DAST)
         uses: zaproxy/action-full-scan@v0.12.0
         env:
-          # Χρησιμοποιούμε τα ενσωματωμένα Env Vars του ZAP για να περάσουμε το Cookie
+          # Περνάμε το Cookie ως HTTP Header σε κάθε request του ZAP
           ZAP_AUTH_HEADER: "Cookie"
           ZAP_AUTH_HEADER_VALUE: "PHPSESSID=${{ env.PHPSESSID }}; security=low"
           ZAP_AUTH_HEADER_SITE: "localhost"
@@ -303,19 +310,23 @@ jobs:
           target: 'http://localhost:80'
           allow_issue_writing: false
           fail_action: false
+          # cmd_options:
+          # -j ενεργοποιεί τον AJAX Spider 
+          # -U του λέει να διαβάσει το αρχείο με τα urls που φτιάξαμε
+          cmd_options: '-j -U /zap/wrk/urls.txt'
 
       - name: Upload ZAP Report
-        if: always() # Εξασφαλίζει ότι το report ανεβαίνει ακόμα κι αν το ZAP κάνει fail το pipeline
+        if: always() # Για να ανέβει το report ακόμα κι αν "σκάσει" το βήμα
         uses: actions/upload-artifact@v4
         with:
-          name: zap-security-report
+          name: zap-targeted-security-report
           path: report_html.html
           retention-days: 7
 
       - name: Add ZAP Job Summary
         if: always()
         run: |
-          echo "### 🕷️ OWASP ZAP Full DAST Scan Summary" >> $GITHUB_STEP_SUMMARY
-          echo "- Scan Status: **Completed (Authenticated via Cookie Injection)**" >> $GITHUB_STEP_SUMMARY
+          echo "### 🎯 OWASP ZAP Targeted DAST Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Scan Status: **Completed (Targeted Endpoints via urls.txt)**" >> $GITHUB_STEP_SUMMARY
           echo "- Target: \`http://localhost:80\`" >> $GITHUB_STEP_SUMMARY
-          echo "> 🛡️ OWASP ZAP crawled the application and executed active attacks (XSS, Directory Traversal, CSRF, etc.)." >> $GITHUB_STEP_SUMMARY
+          echo "> 🛡️ Το OWASP ZAP διάβασε τη λίστα με τα URLs, έκανε inject το authentication cookie, και εστίασε τον έλεγχο αποκλειστικά στα ευάλωτα endpoints." >> $GITHUB_STEP_SUMMARY
