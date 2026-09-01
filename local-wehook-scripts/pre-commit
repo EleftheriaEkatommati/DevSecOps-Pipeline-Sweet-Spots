@@ -12,12 +12,12 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# 2. Εκτέλεση του Gitleaks μέσω Docker container
+# Εκτέλεση του Gitleaks μέσω Docker container
 echo "[*] Scanning for hardcoded secrets with Gitleaks..."
 docker run --rm -v "$(pwd)":/path zricethezav/gitleaks:latest dir /path -v
 GEXIT=$?
 
-# 3. Αξιολόγηση αποτελέσματος (Exit Codes)
+# (Exit Codes)
 if [ $GEXIT -eq 0 ]; then
     echo "[+] Gitleaks: No secrets found. Check passed!"
 elif [ $GEXIT -eq 1 ]; then
